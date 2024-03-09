@@ -1,10 +1,12 @@
 "use client"
-import Editor from "~/components/editor";
+
+import Editor from "~/components/editor/editor";
+
 
 export default function Home() {
   return (
-    <div>
-            <h1>Hello</h1>
+    <div className="container px-10 min-h-screen flex justify-center items-center">
+            
             <Editor />
         </div>
   );
