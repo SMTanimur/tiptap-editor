@@ -1,99 +1,150 @@
-'use client'
+"use client";
 
-import { useEffect, useState } from 'react'
-import { Inter } from 'next/font/google'
-import localFont from 'next/font/local'
-import { EditorContent, useEditor, type Content } from '@tiptap/react'
-import { useDebouncedCallback } from 'use-debounce'
+import { useEffect, useRef, useState } from "react";
+import { useEditor, EditorContent } from "@tiptap/react";
+import { TiptapExtensions } from "./extensions";
 
+import { useDebouncedCallback } from "use-debounce";
+import { useCompletion } from "ai/react";
+import { toast } from "sonner";
+import va from "@vercel/analytics";
 
-import { cn } from '~/lib/utils'
-import { useLocalStorage } from './use-local-storage'
-import { TiptapExtensions } from './extensions'
-import { TiptapEditorProps } from './props'
-import { EditorBubbleMenu } from './bubble-menu'
+import useLocalStorage from "~/hooks/use-local-storage";
+import { getPrevText } from "~/lib/editor";
+import { EditorBubbleMenu } from "./EditorBubbleMenu";
+import DEFAULT_EDITOR_CONTENT from "./default-content";
+import { TiptapEditorProps } from "./props";
 
-const cal = localFont({
-  src: './CalSans-SemiBold.otf',
-  variable: '--font-display'
-})
-
-const inter = Inter({
-  variable: '--font-default',
-  subsets: ['latin']
-})
 
 export default function Editor() {
-  const [content, setContent] = useLocalStorage<Content>('content', {
-    type: 'doc',
-    content: [{ type: 'paragraph' }]
-  })
-  const [saveStatus, setSaveStatus] = useState('저장됨')
-  const [hydrated, setHydrated] = useState(false)
+  const [content, setContent] = useLocalStorage(
+    "content",
+    DEFAULT_EDITOR_CONTENT,
+  );
+  const [saveStatus, setSaveStatus] = useState("Saved");
+
+  const [hydrated, setHydrated] = useState(false);
 
   const debouncedUpdates = useDebouncedCallback(async ({ editor }) => {
-    const json = editor.getJSON()
-    setSaveStatus('저장 중...')
-    setContent(json)
+    const json = editor.getJSON();
+    setSaveStatus("Saving...");
+    setContent(json);
+    // Simulate a delay in saving.
     setTimeout(() => {
-      setSaveStatus('저장됨')
-    }, 500)
-  }, 750)
+      setSaveStatus("Saved");
+    }, 500);
+  }, 750);
 
   const editor = useEditor({
     extensions: TiptapExtensions,
     editorProps: TiptapEditorProps,
     onUpdate: (e) => {
-      setSaveStatus('작성 중...')
-      debouncedUpdates(e)
+      setSaveStatus("Unsaved");
+      const selection = e.editor.state.selection;
+      const lastTwo = getPrevText(e.editor, {
+        chars: 2,
+      });
+      if (lastTwo === "++" && !isLoading) {
+        e.editor.commands.deleteRange({
+          from: selection.from - 2,
+          to: selection.from,
+        });
+        complete(
+          getPrevText(e.editor, {
+            chars: 5000,
+          }),
+        );
+        // complete(e.editor.storage.markdown.getMarkdown());
+        va.track("Autocomplete Shortcut Used");
+      } else {
+        debouncedUpdates(e);
+      }
     },
-    autofocus: 'end'
-  })
+    autofocus: "end",
+  });
 
-  const onShareLink = async () => {
-    const param = btoa(encodeURIComponent(JSON.stringify(content)))
-    if (typeof window.navigator !== 'undefined') {
-      await window.navigator.clipboard.writeText(
-        `https://dongwook.kim/memo?c=${param}`
-      )
-      // toast.success('복사되었습니다.')
-    }
-  }
+  const { complete, completion, isLoading, stop } = useCompletion({
+    id: "novel",
+    api: "/api/generate",
+    onFinish: (_prompt, completion) => {
+      editor?.commands.setTextSelection({
+        from: editor.state.selection.from - completion.length,
+        to: editor.state.selection.from,
+      });
+    },
+    onError: (err) => {
+      toast.error(err.message);
+      if (err.message === "You have reached your request limit for the day.") {
+        va.track("Rate Limit Reached");
+      }
+    },
+  });
+
+  const prev = useRef("");
+
+  // Insert chunks of the generated text
+  useEffect(() => {
+    const diff = completion.slice(prev.current.length);
+    prev.current = completion;
+    editor?.commands.insertContent(diff);
+  }, [isLoading, editor, completion]);
 
   useEffect(() => {
-    if (editor && content && !hydrated) {
-      editor.commands.setContent(content)
-      setHydrated(true)
+    // if user presses escape or cmd + z and it's loading,
+    // stop the request, delete the completion, and insert back the "++"
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || (e.metaKey && e.key === "z")) {
+        stop();
+        if (e.key === "Escape") {
+          editor?.commands.deleteRange({
+            from: editor.state.selection.from - completion.length,
+            to: editor.state.selection.from,
+          });
+        }
+        editor?.commands.insertContent("++");
+      }
+    };
+    const mousedownHandler = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      stop();
+      if (window.confirm("AI writing paused. Continue?")) {
+        complete(editor?.getText() || "");
+      }
+    };
+    if (isLoading) {
+      document.addEventListener("keydown", onKeyDown);
+      window.addEventListener("mousedown", mousedownHandler);
+    } else {
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", mousedownHandler);
     }
-  }, [editor, content, hydrated])
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("mousedown", mousedownHandler);
+    };
+  }, [stop, isLoading, editor, complete, completion.length]);
+
+  // Hydrate the editor with the content from localStorage.
+  useEffect(() => {
+    if (editor && content && !hydrated) {
+      editor.commands.setContent(content);
+      setHydrated(true);
+    }
+  }, [editor, content, hydrated]);
+
   return (
     <div
-      className={cn(
-        'prose relative min-h-[500px] pb-80',
-        cal.variable,
-        inter.variable
-      )}
+      onClick={() => {
+        editor?.chain().focus().run();
+      }}
+      className="relative min-h-[500px] w-full max-w-screen-lg border-stone-200 bg-white p-12 px-8 sm:mb-[calc(20vh)] sm:rounded-lg sm:border sm:px-12 sm:shadow-lg"
     >
-      <h1>메모</h1>
+      <div className="absolute right-5 top-5 mb-5 rounded-lg bg-stone-100 px-2 py-1 text-sm text-stone-400">
+        {saveStatus}
+      </div>
       {editor && <EditorBubbleMenu editor={editor} />}
       <EditorContent editor={editor} />
-      <div className="mt-4 flex items-center gap-2 text-sm">
-        <span className="rounded-lg bg-stone-100 px-2 py-1 text-stone-400">
-          {saveStatus}
-        </span>
-        <button
-          onClick={onShareLink}
-          className="rounded-lg border px-2 py-1 text-stone-500"
-        >
-          링크 공유
-        </button>
-        <button
-          onClick={() => editor?.commands.clearContent()}
-          className="rounded-lg border px-2 py-1 text-stone-500"
-        >
-          비우기
-        </button>
-      </div>
     </div>
-  )
+  );
 }

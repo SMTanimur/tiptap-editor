@@ -1,62 +1,23 @@
-"use client";
-
-import { InputRule } from "@tiptap/core";
-import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
-import { Color } from "@tiptap/extension-color";
-import Gapcursor from "@tiptap/extension-gapcursor";
-import HardBreak from "@tiptap/extension-hard-break";
-import Highlight from "@tiptap/extension-highlight";
+import StarterKit from "@tiptap/starter-kit";
 import HorizontalRule from "@tiptap/extension-horizontal-rule";
-import TiptapImage from "@tiptap/extension-image";
 import TiptapLink from "@tiptap/extension-link";
+import TiptapImage from "@tiptap/extension-image";
 import Placeholder from "@tiptap/extension-placeholder";
-import Table from "@tiptap/extension-table";
-import TableCell from "@tiptap/extension-table-cell";
-import TableHeader from "@tiptap/extension-table-header";
-import TableRow from "@tiptap/extension-table-row";
+import TiptapUnderline from "@tiptap/extension-underline";
+import TextStyle from "@tiptap/extension-text-style";
+import { Color } from "@tiptap/extension-color";
 import TaskItem from "@tiptap/extension-task-item";
 import TaskList from "@tiptap/extension-task-list";
-import TextStyle from "@tiptap/extension-text-style";
-import TiptapUnderline from "@tiptap/extension-underline";
-import StarterKit from "@tiptap/starter-kit";
-import css from 'highlight.js/lib/languages/css'
-import js from 'highlight.js/lib/languages/javascript'
-import ts from 'highlight.js/lib/languages/typescript'
-import html from 'highlight.js/lib/languages/xml'
-import { lowlight } from 'lowlight/lib/core'
 import { Markdown } from "tiptap-markdown";
-
+import Highlight from "@tiptap/extension-highlight";
+import { InputRule } from "@tiptap/core";
+import UploadImagesPlugin from "./plugins/upload-images";
 import SlashCommand from "./slash-command";
 
-lowlight.registerLanguage("html", html);
-lowlight.registerLanguage("css", css);
-lowlight.registerLanguage("js", js);
-lowlight.registerLanguage("ts", ts);
 
 const CustomImage = TiptapImage.extend({
-  //   addProseMirrorPlugins() {
-  //     return [UploadImagesPlugin()];
-  //   },
-});
-
-const CustomTableCell = TableCell.extend({
-  addAttributes() {
-    return {
-      // extend the existing attributes …
-      ...this.parent?.(),
-
-      // and add a new one …
-      backgroundColor: {
-        default: null,
-        parseHTML: (element) => element.getAttribute("data-background-color"),
-        renderHTML: (attributes) => {
-          return {
-            "data-background-color": attributes.backgroundColor,
-            style: `background-color: ${attributes.backgroundColor}`,
-          };
-        },
-      },
-    };
+  addProseMirrorPlugins() {
+    return [UploadImagesPlugin()];
   },
 });
 
@@ -102,6 +63,7 @@ export const TiptapExtensions = [
     },
     gapcursor: false,
   }),
+  // patch to fix horizontal rule bug: https://github.com/ueberdosis/tiptap/pull/3859#issuecomment-1536799740
   HorizontalRule.extend({
     addInputRules() {
       return [
@@ -112,11 +74,11 @@ export const TiptapExtensions = [
 
             const { tr } = state;
             const start = range.from;
-            const end = range.to;
+            let end = range.to;
 
             tr.insert(start - 1, this.type.create(attributes)).delete(
               tr.mapping.map(start),
-              tr.mapping.map(end)
+              tr.mapping.map(end),
             );
           },
         }),
@@ -144,7 +106,7 @@ export const TiptapExtensions = [
       if (node.type.name === "heading") {
         return `Heading ${node.attrs.level}`;
       }
-      return "명령어는 '/' 입력";
+      return "Press '/' for commands, or '++' for AI autocomplete...";
     },
     includeChildren: true,
   }),
@@ -169,16 +131,5 @@ export const TiptapExtensions = [
   Markdown.configure({
     html: false,
     transformCopiedText: true,
-  }),
-  CodeBlockLowlight.configure({
-    lowlight,
-  }),
-  Gapcursor,
-  Table.configure({ resizable: true }),
-  TableHeader,
-  CustomTableCell,
-  TableRow,
-  HardBreak.configure({
-    keepMarks: false,
   }),
 ];
