@@ -4,13 +4,7 @@ import { DocumentContextType, Session } from '~/types';
 
 type Props = {
   children?: React.ReactNode
-  repoOwner: string
-  repoSlug: string
-  repoBranch: string
-  contentPath: string
-  monorepoPath: string
-  session: Session | null
-  initialApolloState?: null
+
   collections: string[]
   pages: string[]
   addPage: (page: string) => void
@@ -18,22 +12,13 @@ type Props = {
 }
 
 export const CMSContext = createContext({
-  repoOwner: '',
-  repoSlug: '',
-  repoBranch: '',
-  contentPath: '',
-  monorepoPath: '',
-  session: null
+ 
+ 
 } as Omit<Props, 'client'>)
 
 export const CMSProvider = ({
   children,
-  repoOwner,
-  repoSlug,
-  repoBranch,
-  contentPath,
-  monorepoPath,
-  session,
+ 
   collections,
   pages,
   addPage,
@@ -42,12 +27,6 @@ export const CMSProvider = ({
   return (
     <CMSContext.Provider
       value={{
-        repoOwner: repoOwner || '',
-        repoSlug: repoSlug || '',
-        repoBranch: repoBranch || 'main',
-        contentPath: contentPath || '_content',
-        monorepoPath: monorepoPath || '',
-        session,
         collections,
         pages,
         addPage,
