@@ -1,5 +1,5 @@
 import "~/styles/globals.css";
-import "~/styles/prosemirror.css";
+import "~/styles/editor.css";
 
 import { Metadata } from "next";
 import { ReactNode } from "react";
